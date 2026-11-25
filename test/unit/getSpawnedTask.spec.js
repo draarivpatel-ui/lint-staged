@@ -318,4 +318,41 @@ describe('getSpawnedTask', () => {
 
     expect(abortController.signal.aborted).toBe(false)
   })
+
+  it('should remove the abort listener after the task completes', async ({ expect }) => {
+    expect.assertions(2)
+
+    const abortController = getAbortController()
+    const addSpy = vi.spyOn(abortController.signal, 'addEventListener')
+    const removeSpy = vi.spyOn(abortController.signal, 'removeEventListener')
+
+    const taskFn = getSpawnedTask({ ...defaultOpts, abortController, command: 'node test.js' })
+    await taskFn()
+
+    const handler = addSpy.mock.calls.find(([type]) => type === 'abort')?.[1]
+    expect(handler).toBeTypeOf('function')
+    expect(removeSpy).toHaveBeenCalledWith('abort', handler)
+  })
+
+  it('should remove the abort listener after the task fails', async ({ expect }) => {
+    expect.assertions(3)
+
+    vi.mocked(exec).mockReturnValueOnce({
+      exitCode: 1,
+      async *[Symbol.asyncIterator]() {
+        yield 'test'
+      },
+    })
+
+    const abortController = getAbortController()
+    const addSpy = vi.spyOn(abortController.signal, 'addEventListener')
+    const removeSpy = vi.spyOn(abortController.signal, 'removeEventListener')
+
+    const taskFn = getSpawnedTask({ ...defaultOpts, abortController, command: 'mock-fail-linter' })
+    await expect(taskFn()).rejects.toThrow('mock-fail-linter [FAILED]')
+
+    const handler = addSpy.mock.calls.find(([type]) => type === 'abort')?.[1]
+    expect(handler).toBeTypeOf('function')
+    expect(removeSpy).toHaveBeenCalledWith('abort', handler)
+  })
 })
